@@ -1,20 +1,25 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:le_chat/chat_page.dart';
 import 'package:le_chat/login_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 
-class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.username, this.receiver});
+class ChatPrivatePage extends StatefulWidget {
+  const ChatPrivatePage({
+    super.key,
+    required this.currentUser,
+    required this.receiver,
+  });
 
-  final String username;
-  final String? receiver;
+  final String currentUser;
+  final String receiver;
   @override
-  State<ChatPage> createState() => _ChatPageState();
+  State<ChatPrivatePage> createState() => _ChatPrivatePageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPrivatePageState extends State<ChatPrivatePage> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final List<Map<String, dynamic>> _users = [];
@@ -36,15 +41,11 @@ class _ChatPageState extends State<ChatPage> {
                 ..clear()
                 ..addAll(
                   data.where((msg) {
-                    if (widget.receiver == null) {
-                      return msg['receiver'] == null; // group chat
-                    } else {
-                      return (msg['sender'] == widget.username &&
-                              msg['receiver'] == widget.receiver) ||
-                          (msg['sender'] == widget.receiver &&
-                              msg['receiver'] ==
-                                  widget.username); // private chats
-                    }
+                    // Private chat: only messages between username and receiver
+                    return (msg['sender'] == widget.currentUser &&
+                            msg['receiver'] == widget.receiver) ||
+                        (msg['sender'] == widget.receiver &&
+                            msg['receiver'] == widget.currentUser);
                   }),
                 );
             });
@@ -75,7 +76,7 @@ class _ChatPageState extends State<ChatPage> {
     if (text.isEmpty) return;
 
     await Supabase.instance.client.from('messages').insert({
-      'sender': widget.username,
+      'sender': widget.currentUser,
       'receiver': widget.receiver,
       'content': text,
     });
@@ -85,7 +86,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: DrawerChat(users: _users, username: widget.username),
+      drawer: DrawerChat(users: _users, username: widget.currentUser),
       appBar: AppBar(
         iconTheme: IconThemeData(color: Colors.white),
         backgroundColor: Theme.of(context).colorScheme.primary,
@@ -94,7 +95,7 @@ class _ChatPageState extends State<ChatPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Chat: ${widget.receiver ?? 'Everyone\'s Group'}",
+              "Chat: ${widget.receiver}",
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
@@ -102,7 +103,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
             Text(
-              "Your username : ${widget.username}",
+              "Your username : ${widget.currentUser}",
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
@@ -119,12 +120,12 @@ class _ChatPageState extends State<ChatPage> {
               await client
                   .from('users')
                   .delete()
-                  .eq('username', widget.username);
+                  .eq('username', widget.currentUser);
               // Delete all messages from this user
               await client
                   .from('messages')
                   .delete()
-                  .eq('sender', widget.username);
+                  .eq('sender', widget.currentUser);
               // Navigate back to LoginPage
               if (mounted) {
                 Navigator.pushReplacement(
@@ -147,7 +148,7 @@ class _ChatPageState extends State<ChatPage> {
                 children: [
                   SizedBox(height: 4),
                   ..._messages.reversed.map((msg) {
-                    return (msg['receiver'] == widget.receiver)
+                    return (msg['receiver'] == widget.currentUser)
                         ? Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
@@ -155,13 +156,13 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                             child: Row(
                               children: [
-                                (msg['sender'] == widget.username)
+                                (msg['sender'] == widget.currentUser)
                                     ? Expanded(flex: 1, child: Container())
                                     : Container(),
                                 Expanded(
                                   flex: 4,
                                   child: Container(
-                                    color: (msg['sender'] == widget.username)
+                                    color: (msg['sender'] == widget.currentUser)
                                         ? Theme.of(
                                             context,
                                           ).colorScheme.onPrimary
@@ -170,7 +171,7 @@ class _ChatPageState extends State<ChatPage> {
                                           ).colorScheme.secondary,
                                     child: ListTile(
                                       leading:
-                                          (msg['sender'] == widget.username)
+                                          (msg['sender'] == widget.currentUser)
                                           ? null
                                           : CircleAvatar(
                                               backgroundColor: Theme.of(
@@ -184,7 +185,7 @@ class _ChatPageState extends State<ChatPage> {
                                                 size: 28,
                                               ),
                                             ),
-                                      title: (msg['sender'] == widget.username)
+                                      title: (msg['sender'] == widget.currentUser)
                                           ? Text(
                                               "You",
                                               textAlign: TextAlign.right,
@@ -209,14 +210,14 @@ class _ChatPageState extends State<ChatPage> {
                                         "${msg['content']}",
                                         style: TextStyle(
                                           color:
-                                              (msg['sender'] == widget.username)
+                                              (msg['sender'] == widget.currentUser)
                                               ? null
                                               : Colors.white,
                                         ),
                                       ),
                                       isThreeLine: true,
                                       trailing:
-                                          (msg['sender'] == widget.username)
+                                          (msg['sender'] == widget.currentUser)
                                           ? CircleAvatar(
                                               backgroundColor: Theme.of(
                                                 context,
@@ -233,7 +234,7 @@ class _ChatPageState extends State<ChatPage> {
                                     ),
                                   ),
                                 ),
-                                !(msg['sender'] == widget.username)
+                                !(msg['sender'] == widget.currentUser)
                                     ? Expanded(flex: 1, child: Container())
                                     : Container(),
                               ],
@@ -255,68 +256,6 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class DrawerChat extends StatelessWidget {
-  const DrawerChat({super.key, required this.users, required this.username});
-
-  final List<Map<String, dynamic>> users;
-  final String username;
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            child: Text(
-              'Chat Users',
-              style: TextStyle(color: Colors.white, fontSize: 20),
-            ),
-          ),
-          // Everyone's Group
-          ListTile(
-            leading: Icon(Icons.group),
-            title: Text("Everyone's Group"),
-            onTap: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChatPage(
-                    username: username,
-                    receiver: null, // null means group chat
-                  ),
-                ),
-              );
-            },
-          ),
-          Divider(),
-          // Dynamic list of users
-          ...users.map((user) {
-            return ListTile(
-              leading: Icon(Icons.person),
-              title: Text(user['username']),
-              onTap: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatPage(
-                      username: username,
-                      receiver: user['username'],
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
         ],
       ),
     );
