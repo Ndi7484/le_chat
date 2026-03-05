@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:le_chat/login_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
+import 'dart:html' as html;
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.username, this.receiver});
@@ -12,22 +15,62 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final _controller = TextEditingController();
-  final _messages = <Map<String, dynamic>>[];
+  final TextEditingController _controller = TextEditingController();
+  final List<Map<String, dynamic>> _messages = [];
+  final List<Map<String, dynamic>> _users = [];
+
+  StreamSubscription<List<Map<String, dynamic>>>? _messageSubscription;
 
   @override
   void initState() {
     super.initState();
-    Supabase.instance.client
+
+    _messageSubscription = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])
         .order('created_at')
         .listen((data) {
-          setState(() {
-            _messages.clear();
-            _messages.addAll(data);
-          });
+          if (mounted) {
+            setState(() {
+              _messages
+                ..clear()
+                ..addAll(
+                  data.where((msg) {
+                    if (widget.receiver == null) {
+                      return msg['receiver'] == null; // group chat
+                    } else {
+                      return msg['receiver'] == widget.receiver; // private chat
+                    }
+                  }),
+                );
+            });
+          }
         });
+
+    _loadUsers();
+
+    // Detect when user closes the tab/window
+    html.window.onBeforeUnload.listen((event) async {
+      final client = Supabase.instance.client;
+      await client.from('users').delete().eq('username', widget.username);
+      await client.from('messages').delete().eq('sender', widget.username);
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageSubscription?.cancel(); // stop listening
+    _controller.dispose(); // clean up text controller
+    super.dispose();
+  }
+
+  Future<void> _loadUsers() async {
+    final client = Supabase.instance.client;
+    final data = await client.from('users').select();
+    setState(() {
+      _users.clear();
+      _users.addAll(List<Map<String, dynamic>>.from(data));
+    });
   }
 
   void _sendMessage() async {
@@ -45,29 +88,46 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: Drawer(),
+      drawer: DrawerChat(users: _users, username: widget.username),
       appBar: AppBar(
         iconTheme: IconThemeData(color: Colors.white),
         backgroundColor: Theme.of(context).colorScheme.primary,
-        title: Text(
-          "Username : ${widget.username}",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-            color: Colors.white,
-          ),
+        title: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Chat: ${widget.receiver ?? 'Everyone\'s Group'}",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              "Your username : ${widget.username}",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: Colors.white,
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
             onPressed: () async {
               final client = Supabase.instance.client;
-
               // Delete the user from the users table
               await client
                   .from('users')
                   .delete()
                   .eq('username', widget.username);
-
+              // Delete all messages from this user
+              await client
+                  .from('messages')
+                  .delete()
+                  .eq('sender', widget.username);
               // Navigate back to LoginPage
               if (mounted) {
                 Navigator.pushReplacement(
@@ -77,7 +137,7 @@ class _ChatPageState extends State<ChatPage> {
                 );
               }
             },
-            icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 24),
+            icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 30),
           ),
         ],
       ),
@@ -198,6 +258,68 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class DrawerChat extends StatelessWidget {
+  const DrawerChat({super.key, required this.users, required this.username});
+
+  final List<Map<String, dynamic>> users;
+  final String username;
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            child: Text(
+              'Chat Users',
+              style: TextStyle(color: Colors.white, fontSize: 20),
+            ),
+          ),
+          // Everyone's Group
+          ListTile(
+            leading: Icon(Icons.group),
+            title: Text("Everyone's Group"),
+            onTap: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatPage(
+                    username: username,
+                    receiver: null, // null means group chat
+                  ),
+                ),
+              );
+            },
+          ),
+          Divider(),
+          // Dynamic list of users
+          ...users.map((user) {
+            return ListTile(
+              leading: Icon(Icons.person),
+              title: Text(user['username']),
+              onTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChatPage(
+                      username: username,
+                      receiver: user['username'],
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
         ],
       ),
     );
