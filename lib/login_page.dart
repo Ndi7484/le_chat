@@ -72,7 +72,7 @@ class _LoginPageState extends State<LoginPage> {
                 Row(
                   children: [
                     Expanded(
-                      flex: 4,
+                      flex: 6,
                       child: TextFormField(
                         controller: _controller,
                         validator: (value) {
@@ -84,14 +84,19 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     Expanded(
-                      flex: 1,
+                      flex: 2,
                       child: ElevatedButton(
                         onPressed: _login,
-                        child: const Text("Login"),
+                        child: const Text("Start Chat"),
                       ),
                     ),
                   ],
                 ),
+                SizedBox(height: 24),
+                Expanded(child: Container()),
+                SizedBox(height: 24),
+                Text('IMPORTANT:\n* the loading and connection is based on how fast is your internet speed and bandwith limit\n* make sure your connection is stable or it may sometimes crash/freeze your chat sessions\n* it\'s recommended don\'t share any important or privacy data to this chat, or else it may leaked all your privacy due it use database as it\'s chat sessions (your chat will be deleted within every 6 hours automaticly)\n* please respect the other\'s privacy and feelings in chat sessions and didn\'t chat about any violance or disturbance that related to someone, something or anything that will/gonna hurt\'s others person, individual or certain groups\n* Le\' Chat is develop using Flutter as the framework and not supported by any instance, some chatting experience will be not as usefull or hopefully work as it is\n* use your own username that not related to your own real name, birth date, addresses, or any privacy issues',textAlign: TextAlign.justify, style: TextStyle(color: Colors.red, fontSize: 10)),
+                SizedBox(height: 24),
               ],
             ),
           ),

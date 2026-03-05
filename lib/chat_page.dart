@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:le_chat/login_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.username, this.receiver});
@@ -18,6 +16,7 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final List<Map<String, dynamic>> _users = [];
+  final ScrollController _scrollController = ScrollController();
 
   StreamSubscription<List<Map<String, dynamic>>>? _messageSubscription;
 
@@ -28,7 +27,7 @@ class _ChatPageState extends State<ChatPage> {
     _messageSubscription = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])
-        .order('created_at')
+        .order('created_at', ascending: true)
         .listen((data) {
           if (mounted) {
             setState(() {
@@ -37,19 +36,28 @@ class _ChatPageState extends State<ChatPage> {
                 ..addAll(
                   data.where((msg) {
                     if (widget.receiver == null) {
-                      return msg['receiver'] == null; // group chat
-                    } else {
-                      return (msg['sender'] == widget.username &&
-                              msg['receiver'] == widget.receiver) ||
-                          (msg['sender'] == widget.receiver &&
-                              msg['receiver'] ==
-                                  widget.username); // private chats
+                      return msg['receiver'] == widget.receiver; // group chat
                     }
+                    return (msg['sender'] == widget.username &&
+                            msg['receiver'] == widget.receiver) ||
+                        (msg['sender'] == widget.receiver &&
+                            msg['receiver'] == widget.username); // private chat
                   }),
                 );
             });
           }
         });
+
+    // Scroll to bottom after messages update
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
 
     _loadUsers();
   }
@@ -58,6 +66,7 @@ class _ChatPageState extends State<ChatPage> {
   void dispose() {
     _messageSubscription?.cancel(); // stop listening
     _controller.dispose(); // clean up text controller
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -144,102 +153,94 @@ class _ChatPageState extends State<ChatPage> {
             child: Container(
               color: Theme.of(context).colorScheme.onSecondary,
               child: ListView(
+                controller: _scrollController,
                 children: [
                   SizedBox(height: 4),
-                  ..._messages.reversed.map((msg) {
-                    return (msg['receiver'] == widget.receiver)
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              children: [
-                                (msg['sender'] == widget.username)
-                                    ? Expanded(flex: 1, child: Container())
-                                    : Container(),
-                                Expanded(
-                                  flex: 4,
-                                  child: Container(
-                                    color: (msg['sender'] == widget.username)
-                                        ? Theme.of(
+                  ..._messages.map((msg) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          (msg['sender'] == widget.username)
+                              ? Expanded(flex: 1, child: Container())
+                              : Container(),
+                          Expanded(
+                            flex: 4,
+                            child: Container(
+                              color: (msg['sender'] == widget.username)
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.secondary,
+                              child: ListTile(
+                                leading: (msg['sender'] == widget.username)
+                                    ? null
+                                    : CircleAvatar(
+                                        backgroundColor: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                        child: Icon(
+                                          Icons.person_pin_rounded,
+                                          color: Theme.of(
                                             context,
-                                          ).colorScheme.onPrimary
-                                        : Theme.of(
-                                            context,
-                                          ).colorScheme.secondary,
-                                    child: ListTile(
-                                      leading:
-                                          (msg['sender'] == widget.username)
-                                          ? null
-                                          : CircleAvatar(
-                                              backgroundColor: Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
-                                              child: Icon(
-                                                Icons.person_pin_rounded,
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.onPrimary,
-                                                size: 28,
-                                              ),
-                                            ),
-                                      title: (msg['sender'] == widget.username)
-                                          ? Text(
-                                              "You",
-                                              textAlign: TextAlign.right,
-                                              style: TextStyle(
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.primary,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            )
-                                          : Text(
-                                              "${msg['sender']}",
-                                              textAlign: TextAlign.left,
-                                              style: TextStyle(
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.onPrimary,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                      subtitle: Text(
-                                        "${msg['content']}",
-                                        style: TextStyle(
-                                          color:
-                                              (msg['sender'] == widget.username)
-                                              ? null
-                                              : Colors.white,
+                                          ).colorScheme.onPrimary,
+                                          size: 28,
                                         ),
                                       ),
-                                      isThreeLine: true,
-                                      trailing:
-                                          (msg['sender'] == widget.username)
-                                          ? CircleAvatar(
-                                              backgroundColor: Theme.of(
-                                                context,
-                                              ).colorScheme.onSecondary,
-                                              child: Icon(
-                                                Icons.person,
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.primary,
-                                                size: 28,
-                                              ),
-                                            )
-                                          : null,
-                                    ),
+                                title: (msg['sender'] == widget.username)
+                                    ? Text(
+                                        "You",
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : Text(
+                                        "${msg['sender']}",
+                                        textAlign: TextAlign.left,
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                subtitle: Text(
+                                  "${msg['content']}",
+                                  style: TextStyle(
+                                    color: (msg['sender'] == widget.username)
+                                        ? null
+                                        : Colors.white,
                                   ),
                                 ),
-                                !(msg['sender'] == widget.username)
-                                    ? Expanded(flex: 1, child: Container())
-                                    : Container(),
-                              ],
+                                isThreeLine: true,
+                                trailing: (msg['sender'] == widget.username)
+                                    ? CircleAvatar(
+                                        backgroundColor: Theme.of(
+                                          context,
+                                        ).colorScheme.onSecondary,
+                                        child: Icon(
+                                          Icons.person,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          size: 28,
+                                        ),
+                                      )
+                                    : null,
+                              ),
                             ),
-                          )
-                        : Container();
+                          ),
+                          !(msg['sender'] == widget.username)
+                              ? Expanded(flex: 1, child: Container())
+                              : Container(),
+                        ],
+                      ),
+                    );
                   }),
                   SizedBox(height: 4),
                 ],
